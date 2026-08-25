@@ -60,6 +60,8 @@
   .btn-primary{ width:100%; background:var(--accent); color:#08171a; border:none; padding:13px; border-radius:12px; font-size:15px; font-weight:700; font-family:inherit; margin-top:4px; }
   .btn-primary:active{opacity:0.85;}
   .btn-ghost{ background:transparent; border:1px solid var(--line); color:var(--ink-dim); padding:8px 12px; border-radius:10px; font-size:12px; font-family:inherit; }
+  .btn-sync{ background:var(--accent-soft); border:1px solid var(--accent); color:var(--accent); padding:8px 12px; border-radius:20px; font-size:12px; font-weight:600; font-family:inherit; text-decoration:none; display:inline-block; }
+  .btn-sync:active{opacity:0.7;}
   .tabbar{ position:fixed; bottom:0; left:0; right:0; background:rgba(15,27,43,0.92); backdrop-filter:blur(14px); border-top:1px solid var(--line); display:flex; padding: 8px 10px calc(10px + env(safe-area-inset-bottom)); z-index:50; }
   .tabbar button{ flex:1; background:none; border:none; color:var(--ink-faint); font-family:inherit; font-size:11px; padding:6px 0; display:flex; flex-direction:column; align-items:center; gap:4px; }
   .tabbar button .ic{font-size:19px;}
@@ -138,6 +140,11 @@
         </div>
       </div>
       <button class="btn-primary" id="btnSave">기록 저장</button>
+      <div id="healthSyncPanel" style="display:none; margin-top:14px; padding-top:14px; border-top:1px solid var(--line);">
+        <div style="font-size:12px; color:var(--ink-dim); margin-bottom:10px;">Apple 건강 앱으로 보내기</div>
+        <div id="healthSyncButtons" style="display:flex; flex-wrap:wrap; gap:8px;"></div>
+        <div style="font-size:11px; color:var(--ink-faint); margin-top:8px;">탭마다 단축어 앱으로 잠깐 전환됩니다. HbA1c는 Apple이 앱 쓰기를 막아둬서 보낼 수 없습니다.</div>
+      </div>
     </div>
   </section>
 
@@ -170,6 +177,16 @@
       <button class="btn-primary" id="btnSaveCfg" style="margin-top:14px;">기준값 저장</button>
     </div>
     <div class="card">
+      <h2>Apple 건강 앱 연동 (단축어 이름)</h2>
+      <div class="install-hint" style="margin-bottom:12px;">
+        단축어 앱에서 만든 이름과 정확히 같아야 합니다. HbA1c는 Apple이 서드파티 쓰기를 막아둬서 연동 대상에서 제외됩니다.
+      </div>
+      <div class="settings-row"><div class="k">혈당 단축어 이름</div><input type="text" id="cfgShGlucose" style="width:140px; text-align:left;"></div>
+      <div class="settings-row"><div class="k">혈압 단축어 이름</div><input type="text" id="cfgShBp" style="width:140px; text-align:left;"></div>
+      <div class="settings-row"><div class="k">체중 단축어 이름</div><input type="text" id="cfgShWeight" style="width:140px; text-align:left;"></div>
+      <button class="btn-primary" id="btnSaveShortcuts" style="margin-top:14px;">단축어 이름 저장</button>
+    </div>
+    <div class="card">
       <h2>데이터</h2>
       <button class="btn-ghost" id="btnExport">JSON으로 내보내기</button>
     </div>
@@ -194,6 +211,11 @@ const DEFAULT_CONFIG = {
     sys:          { normal: 120, caution: 130, prediab: 140 },
     dia:          { normal: 80,  caution: 80,  prediab: 90  },
     hba1c:        { normal: 5.7, caution: 6.0, prediab: 6.5 }
+  },
+  shortcutNames: {
+    glucose: '혈당 기록',
+    bp:      '혈압 기록',
+    weight:  '체중 기록'
   },
   storageKeys: {
     entries: 'gluco-entries',
@@ -250,6 +272,35 @@ function evalBP(sys, dia){
 }
 const STATUS_LABEL = { ok:'정상', caution:'주의', prediab:'전단계', danger:'위험' };
 
+/* ======================================================================
+   APPLE 건강 앱 연동 (단축어 URL 브릿지)
+   HealthKit 웹 API가 없어 iOS 단축어 앱의 "건강 샘플 기록" 액션을
+   shortcuts:// URL 스킴으로 호출해 우회. <a href> 방식 사용 —
+   버튼+JS 네비게이션은 일부 sandbox 환경에서 막히지만 앵커 직접
+   탭은 사용자가 유발한 네비게이션으로 취급되어 더 안정적으로 동작.
+   ====================================================================== */
+function shortcutURL(name, value){
+  return 'shortcuts://run-shortcut?name=' + encodeURIComponent(name)
+       + '&input=text&text=' + encodeURIComponent(value);
+}
+function healthSyncTargets(entry){
+  const targets = [];
+  if(entry.glucose) targets.push({ label:'혈당 '+entry.glucose.value, name: CONFIG.shortcutNames.glucose, value: entry.glucose.value });
+  if(entry.bp){
+    targets.push({ label:'혈압 '+entry.bp.sys+'/'+entry.bp.dia, name: CONFIG.shortcutNames.bp, value: entry.bp.sys+'/'+entry.bp.dia });
+  }
+  if(entry.weight!=null) targets.push({ label:'체중 '+entry.weight, name: CONFIG.shortcutNames.weight, value: entry.weight });
+  return targets;
+}
+function renderHealthSyncButtons(container, entry){
+  const targets = healthSyncTargets(entry);
+  if(!targets.length){ container.innerHTML=''; return false; }
+  container.innerHTML = targets.map(t =>
+    `<a class="btn-sync" href="${shortcutURL(t.name, t.value)}">${t.label} →건강앱</a>`
+  ).join('');
+  return true;
+}
+
 document.querySelectorAll('.tabbar button').forEach(btn=>{
   btn.addEventListener('click', ()=>{
     document.querySelectorAll('.tabbar button').forEach(b=>b.classList.remove('active'));
@@ -302,6 +353,10 @@ document.getElementById('btnSave').addEventListener('click', async ()=>{
   ['inGlucose','inSys','inDia','inWeight','inHba1c','inMemo'].forEach(id=>document.getElementById(id).value='');
   showToast('기록 저장됨');
   renderStatusRing();
+
+  const panel = document.getElementById('healthSyncPanel');
+  const has = renderHealthSyncButtons(document.getElementById('healthSyncButtons'), entry);
+  panel.style.display = has ? 'block' : 'none';
 });
 
 function latestOf(field){
@@ -435,10 +490,16 @@ function renderLogList(){
         <div class="meta">${dateStr}</div>
         <div class="readings">${readings}</div>
         ${e.memo ? `<div class="memo">${escapeHtml(e.memo)}</div>` : ''}
+        <div class="log-sync" data-entry="${e.id}" style="margin-top:8px; display:flex; flex-wrap:wrap; gap:6px;"></div>
       </div>
       <button class="del" data-del="${e.id}">✕</button>
     </div>`;
   }).join('');
+
+  ENTRIES.forEach(e=>{
+    const holder = list.querySelector(`.log-sync[data-entry="${e.id}"]`);
+    if(holder) renderHealthSyncButtons(holder, e);
+  });
 
   list.querySelectorAll('[data-del]').forEach(btn=>{
     btn.addEventListener('click', async ()=>{
@@ -460,6 +521,9 @@ function fillSettingsForm(){
   document.getElementById('cfgSysMax').value = CONFIG.ranges.sys.normal;
   document.getElementById('cfgDiaMax').value = CONFIG.ranges.dia.normal;
   document.getElementById('cfgHba1cMax').value = CONFIG.ranges.hba1c.normal;
+  document.getElementById('cfgShGlucose').value = CONFIG.shortcutNames.glucose;
+  document.getElementById('cfgShBp').value = CONFIG.shortcutNames.bp;
+  document.getElementById('cfgShWeight').value = CONFIG.shortcutNames.weight;
 }
 document.getElementById('btnSaveCfg').addEventListener('click', async ()=>{
   CONFIG.heightCm = parseFloat(document.getElementById('cfgHeight').value) || CONFIG.heightCm;
@@ -471,6 +535,13 @@ document.getElementById('btnSaveCfg').addEventListener('click', async ()=>{
   await persistConfig();
   showToast('기준값 저장됨');
   renderStatusRing();
+});
+document.getElementById('btnSaveShortcuts').addEventListener('click', async ()=>{
+  CONFIG.shortcutNames.glucose = document.getElementById('cfgShGlucose').value.trim() || CONFIG.shortcutNames.glucose;
+  CONFIG.shortcutNames.bp = document.getElementById('cfgShBp').value.trim() || CONFIG.shortcutNames.bp;
+  CONFIG.shortcutNames.weight = document.getElementById('cfgShWeight').value.trim() || CONFIG.shortcutNames.weight;
+  await persistConfig();
+  showToast('단축어 이름 저장됨');
 });
 document.getElementById('btnExport').addEventListener('click', ()=>{
   const blob = new Blob([JSON.stringify(ENTRIES, null, 2)], {type:'application/json'});
