@@ -184,6 +184,7 @@
       <div class="settings-row"><div class="k">혈당 단축어 이름</div><input type="text" id="cfgShGlucose" style="width:140px; text-align:left;"></div>
       <div class="settings-row"><div class="k">혈압 단축어 이름</div><input type="text" id="cfgShBp" style="width:140px; text-align:left;"></div>
       <div class="settings-row"><div class="k">체중 단축어 이름</div><input type="text" id="cfgShWeight" style="width:140px; text-align:left;"></div>
+      <div class="settings-row"><div class="k">BMI 단축어 이름</div><input type="text" id="cfgShBmi" style="width:140px; text-align:left;"></div>
       <button class="btn-primary" id="btnSaveShortcuts" style="margin-top:14px;">단축어 이름 저장</button>
     </div>
     <div class="card">
@@ -215,7 +216,8 @@ const DEFAULT_CONFIG = {
   shortcutNames: {
     glucose: '혈당 기록',
     bp:      '혈압 기록',
-    weight:  '체중 기록'
+    weight:  '체중 기록',
+    bmi:     'BMI 기록'
   },
   storageKeys: {
     entries: 'gluco-entries',
@@ -289,7 +291,11 @@ function healthSyncTargets(entry){
   if(entry.bp){
     targets.push({ label:'혈압 '+entry.bp.sys+'/'+entry.bp.dia, name: CONFIG.shortcutNames.bp, value: entry.bp.sys+'/'+entry.bp.dia });
   }
-  if(entry.weight!=null) targets.push({ label:'체중 '+entry.weight, name: CONFIG.shortcutNames.weight, value: entry.weight });
+  if(entry.weight!=null){
+    targets.push({ label:'체중 '+entry.weight, name: CONFIG.shortcutNames.weight, value: entry.weight });
+    const bmi = (entry.weight / Math.pow(CONFIG.heightCm/100, 2)).toFixed(1);
+    targets.push({ label:'BMI '+bmi, name: CONFIG.shortcutNames.bmi, value: bmi });
+  }
   return targets;
 }
 function renderHealthSyncButtons(container, entry){
@@ -524,6 +530,7 @@ function fillSettingsForm(){
   document.getElementById('cfgShGlucose').value = CONFIG.shortcutNames.glucose;
   document.getElementById('cfgShBp').value = CONFIG.shortcutNames.bp;
   document.getElementById('cfgShWeight').value = CONFIG.shortcutNames.weight;
+  document.getElementById('cfgShBmi').value = CONFIG.shortcutNames.bmi;
 }
 document.getElementById('btnSaveCfg').addEventListener('click', async ()=>{
   CONFIG.heightCm = parseFloat(document.getElementById('cfgHeight').value) || CONFIG.heightCm;
@@ -540,6 +547,7 @@ document.getElementById('btnSaveShortcuts').addEventListener('click', async ()=>
   CONFIG.shortcutNames.glucose = document.getElementById('cfgShGlucose').value.trim() || CONFIG.shortcutNames.glucose;
   CONFIG.shortcutNames.bp = document.getElementById('cfgShBp').value.trim() || CONFIG.shortcutNames.bp;
   CONFIG.shortcutNames.weight = document.getElementById('cfgShWeight').value.trim() || CONFIG.shortcutNames.weight;
+  CONFIG.shortcutNames.bmi = document.getElementById('cfgShBmi').value.trim() || CONFIG.shortcutNames.bmi;
   await persistConfig();
   showToast('단축어 이름 저장됨');
 });
